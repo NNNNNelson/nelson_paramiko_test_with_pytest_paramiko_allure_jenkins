@@ -1,0 +1,11 @@
+.env
+.venv/
+.vscode/
+reports/
+allure-results/
+allure-report/
+*.egg-info/
+temp_tests/
+.coverage
+__pycache__/
+*.pyc
