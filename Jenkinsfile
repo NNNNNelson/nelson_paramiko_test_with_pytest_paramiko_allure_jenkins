@@ -20,7 +20,6 @@ pipeline {
     }
 
     stages {
-
         // ------------------------------------------------------------
         // Stage 1: 确认环境 (打印工具版本，方便排查)
         // SCM 模式下 Jenkins 自动把代码 checkout 到 WORKSPACE
@@ -36,7 +35,6 @@ pipeline {
                 bat 'python --version'
                 bat 'uv --version'
                 bat 'allure --version'
-                bat 'git --version'
             }
         }
 
