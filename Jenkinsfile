@@ -15,7 +15,7 @@ pipeline {
 
     options {
         timestamps()
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 3, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
@@ -110,8 +110,7 @@ pipeline {
     // 无论成功/失败都归档报告产物
     post {
         always {
-            archiveArtifacts artifacts: 'reports\\**, allure-results\\**',
-                             fingerprint: true,
+            archiveArtifacts artifacts: 'reports/**, allure-results/**',
                              allowEmptyArchive: true
         }
     }
