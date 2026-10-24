@@ -21,6 +21,3 @@ def test_run_command_fail(ssh_client: paramiko.SSHClient):
     logger.info(f"标准输出: {stdout.read().decode()}")
     logger.info(f"标准错误: {stderr.read().decode()}")
     assert ret_code != 0, f"路径 {test_nonexist_path} 不应该存在"
-
-    # 测试assert失败是否会中断pipeline
-    assert 1 == 2
