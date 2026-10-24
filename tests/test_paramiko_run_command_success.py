@@ -1,5 +1,6 @@
 import logging
 
+import allure
 import paramiko
 import pytest
 
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.smoke
 @pytest.mark.integration
+@allure.feature("SSH远程命令")
+@allure.story("命令执行成功")
+@allure.title("验证远程文件存在的命令执行成功")
 def test_run_command_success(ssh_client: paramiko.SSHClient):
     # =================测试远程命令执行=================
     test_file_path = UPLOAD_SOURCE_FILE_PATH_WSL

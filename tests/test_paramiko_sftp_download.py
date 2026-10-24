@@ -1,19 +1,23 @@
 import logging
 from pathlib import Path
 
+import allure
 import paramiko
 import pytest
-from utils import local_file_md5, remote_file_md5
 
 from constants import (
     DOWNLOAD_SOURCE_FILE_PATH_WINDOWS,
     DOWNLOAD_SOURCE_FILE_PATH_WSL,
     DOWNLOAD_TARGET_FILE_PATH_WINDOWS,
 )
+from utils import local_file_md5, remote_file_md5
 
 logger = logging.getLogger(__name__)
 
 
+@allure.feature("SFTP文件传输")
+@allure.story("文件下载")
+@allure.title("从远程 WSL 下载文件到本地 Windows 并验证 MD5")
 @pytest.mark.integration
 def test_sftp_download_file(
     sftp_client: paramiko.SFTPClient, ssh_client: paramiko.SSHClient

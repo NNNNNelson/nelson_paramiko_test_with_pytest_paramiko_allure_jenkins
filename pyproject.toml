@@ -15,6 +15,7 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-html>=4.0",
     "allure-pytest>=2.13",
+    "pytest-rerunfailures>=14.0",
     "ruff>=0.5",
     "black>=24.0",
 ]
@@ -29,7 +30,7 @@ log_cli_format = "%(asctime)s - [%(levelname)s] - %(name)s - %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --tb=short --html=reports/report.html --self-contained-html --alluredir=allure-results"
+addopts = "-v --tb=short --html=reports/report.html --self-contained-html --alluredir=allure-results --reruns 2 --reruns-delay 1"
 markers = ["smoke: 冒烟测试-只测试远程命令", "integration: 集成测试-测试远程命令和远程文件传输"]
 log_file = "reports/test_run.log"
 log_file_level = "INFO"
