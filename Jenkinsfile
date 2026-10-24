@@ -18,12 +18,12 @@ pipeline {
             name: 'TEST_SUITE',
             choices: ['All', 'Smoke', 'Integration'],
             description: '选择要执行的测试套件'
-        ),
+        )
         booleanParam(
             name: 'FAIL_FAST',
             defaultValue: false,
             description: '第一个失败就停止?'
-        ),
+        )
         string(
             name: 'SSH_HOST_OVERRIDE',
             defaultValue: '',
@@ -84,7 +84,11 @@ pipeline {
                         passwordVariable: 'SSH_PWD'
                     )
                 ]) {
-                    bat "uv run pytest ${params.TEST_SUITE != 'All' ? '-m' + params.TEST_SUITE : ''} --maxfail=${params.FAIL_FAST ? 1 : 9999}"
+                    bat """
+                        uv run pytest ^
+                        ${params.TEST_SUITE == 'All' ? '' : '-m' + params.TEST_SUITE} ^
+                        --maxfail=${params.FAIL_FAST ? 1 : 9999}
+                    """
                 }
             }
         }
