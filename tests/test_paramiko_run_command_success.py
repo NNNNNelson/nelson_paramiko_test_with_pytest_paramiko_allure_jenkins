@@ -8,6 +8,7 @@ from constants import UPLOAD_SOURCE_FILE_PATH_WSL
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.smoke
 @pytest.mark.integration
 def test_run_command_success(ssh_client: paramiko.SSHClient):
     # =================测试远程命令执行=================

@@ -7,16 +7,34 @@
 pipeline {
     agent any
 
-    // SSH_HOST 不是敏感凭据，直接写在 environment 里注入
-    // SSH_USER / SSH_PWD 仍然走 Jenkins Credentials + withCredentials
-    environment {
-        SSH_HOST = '127.0.0.1'
-    }
-
     options {
         timestamps()
         timeout(time: 3, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    parameters {
+        choice(
+            name: 'TEST_SUITE',
+            choices: ['All', 'Smoke', 'Integration'],
+            description: '选择要执行的测试套件'
+        ),
+        booleanParam(
+            name: 'FAIL_FAST',
+            defaultValue: false,
+            description: '第一个失败就停止?'
+        ),
+        string(
+            name: 'SSH_HOST_OVERRIDE',
+            defaultValue: '',
+            description: '留空用默认 127.0.0.1, 填了就覆盖'
+        )
+    }
+
+    // SSH_HOST 不是敏感凭据，直接写在 environment 里注入
+    // SSH_USER / SSH_PWD 仍然走 Jenkins Credentials + withCredentials
+    environment {
+        SSH_HOST = "${params.SSH_HOST_OVERRIDE ?: '127.0.0.1'}"
     }
 
     stages {
@@ -66,7 +84,7 @@ pipeline {
                         passwordVariable: 'SSH_PWD'
                     )
                 ]) {
-                    bat 'uv run pytest'
+                    bat "uv run pytest ${params.TEST_SUITE != 'All' ? '-m' + params.TEST_SUITE : ''} --maxfail=${params.FAIL_FAST ? 1 : 9999}"
                 }
             }
         }
