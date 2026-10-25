@@ -283,6 +283,9 @@ PWD = os.getenv("SSH_PWD")  # withCredentials 注入
 --reruns-delay 1      重跑间隔 1 秒
 ```
 
+![Jenkins Console Output pytest 摘要](images/jenkins-console-pytest.png)
+> 👆 **Console 末尾 pytest 摘要**：注意这里显示 `2 rerun` —— 说明 `pytest-rerunfailures` 在集成环境（有网络抖动）下真的在工作
+
 ---
 
 ## Stage 4: Publish HTML Report
@@ -345,6 +348,9 @@ stage('Generate Allure Report') {
 - `report`: **单个字符串**（单个输出目录）
 
 还要注意：`allure` step **不需要** `version` 参数 —— Jenkins 自动从 `Manage Jenkins → Tools → Allure installations` 里找已配置的 CLI（我配的是 `allure-2.46`）。
+
+![Jenkins Job Allure Report 链接](images/jenkins-allure-link.png)
+> 👆 **Jenkins Job 页面 Allure 入口**：左侧出现 Allure Report 链接，说明 Plugin 配置正确、CLI 路径匹配；历史每次构建都会保留 Allure 链接，方便对比趋势
 
 ---
 
