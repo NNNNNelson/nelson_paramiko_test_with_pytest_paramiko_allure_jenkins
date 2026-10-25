@@ -197,7 +197,7 @@ uv run pytest -m integration
 uv run pytest tests/test_paramiko_sftp_download.py -v
 ```
 
-### 常见 pytest markers
+### pytest markers
 
 | Marker        | 说明                       | 测试数量 |
 | ------------- | -------------------------- | -------- |
