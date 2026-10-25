@@ -77,7 +77,7 @@ def pytest_sessionfinish(session, exitstatus):
         f"SSH.User={USER}",
         f"Pytest.Version={pytest.__version__}",
         f"Paramiko.Version={paramiko.__version__}",
-        f"Alluredir={allure_dir.resolve()}",
+        f"Alluredir={str(allure_dir.resolve()).replace(os.sep, "/")}",
     ]
     env_path = allure_dir / "environment.properties"
     env_path.write_text("\n".join(env_content) + "\n", encoding="utf-8")
