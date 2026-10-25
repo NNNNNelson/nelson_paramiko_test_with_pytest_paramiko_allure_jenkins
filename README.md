@@ -69,6 +69,9 @@ Jenkins Agent (Windows)
 └────────────┘   └──────────────┘
 ```
 
+![Allure 仪表盘总览](docs/images/allure-dashboard-overview.png)
+> 👆 **Allure Dashboard**：4 个测试用例全部通过，Features 按 SSH 远程命令 / SFTP 文件传输分组，点击每个 Suite 可进入单条用例的执行步骤追溯
+
 ---
 
 ## 📁 目录结构
@@ -221,6 +224,9 @@ Jenkinsfile 定义了 5 个 Stage + Declarative Checkout SCM。详细代码解�
 | **Publish HTML Report**    | `HTML Publisher` 插件                 | pytest-html 报告嵌入 Jenkins 页面              |
 | **Generate Allure Report** | `allure` step                         | 新版 Allure Plugin（org.allurereport.jenkins） |
 
+![Jenkins Build 全绿 Stage 视图](docs/images/jenkins-build-green.png)
+> 👆 **Jenkins Pipeline 执行结果**：5 个 Stage 全部绿色通过，`Run Tests` 阶段显示 pytest 成功，`Generate Allure Report` 阶段报告生成无异常
+
 ### Jenkins Pipeline Job 配置
 
 1. Jenkins 主页 → **New Item**
@@ -244,6 +250,9 @@ Jenkinsfile 定义了 5 个 Stage + Declarative Checkout SCM。详细代码解�
 | **pytest-html** | `--html=reports/report.html`                     | `reports/report.html`      | 单文件、快速预览、Jenkins HTML Publisher 嵌入      |
 | **Allure**      | `--alluredir=allure-results` + `allure generate` | `allure-report/index.html` | 结构化仪表盘、feature/story 分组、趋势图、历史对比 |
 | **测试日志**    | `log_file = "reports/test_run.log"`              | `reports/test_run.log`     | 完整 INFO 级别日志，调试问题首选                   |
+
+![pytest-html 报告预览](docs/images/pytest-html-report.png)
+> 👆 **pytest-html 报告**：与 Allure 形成互补——单文件 HTML 直接预览，快速定位失败用例；Allure 则提供跨构建的历史趋势和结构化分析
 
 ### Allure 仪表盘亮点
 
