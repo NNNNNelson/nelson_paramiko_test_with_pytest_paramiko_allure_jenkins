@@ -8,9 +8,9 @@ pipeline {
     agent any
 
     options {
-        timestamps()
         timeout(time: 3, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
     }
 
     parameters {

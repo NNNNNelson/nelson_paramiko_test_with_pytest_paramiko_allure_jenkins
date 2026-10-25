@@ -45,12 +45,13 @@ agent {
 
 ### `options { ... }`
 
-| Option | 作用 | 为什么要配 |
-|--------|------|-----------|
-| `timeout(30 min)` | 超过 30 分钟自动中止 | 防止 Jenkins Agent 被长时间占用 |
-| `buildDiscarder(keep 10)` | 只保留最近 10 次构建 | Jenkins 磁盘满是最常见的运维问题 |
+| Option                    | 作用                    | 为什么要配                       |
+| ------------------------- | ----------------------- | -------------------------------- |
+| `timeout(30 min)`         | 超过 30 分钟自动中止    | 防止 Jenkins Agent 被长时间占用  |
+| `buildDiscarder(keep 10)` | 只保留最近 10 次构建    | Jenkins 磁盘满是最常见的运维问题 |
+| `timestamps()`            | 记录每个 Stage 开始时间 | 方便调试和分析 Pipeline 执行时间 |
 
-踩过的坑：最早写了 `timestamps()` 作为 option，但 Jenkins 2.580.1 把它移到了 Timestamper Plugin 作为 Pipeline Step/Wrapper，Declarative options 里已经不认了，所以现在没写。
+踩过的坑：最早直接写了 `timestamps()` 作为 option，但测试中发现报错, 研究发现 Jenkins 2.580.1 把它移到了 Timestamper Plugin 作为 Pipeline Step/Wrapper，Declarative options 中使用的话, 需要先安装 Timestamper 插件。
 
 ---
 
@@ -64,7 +65,101 @@ agent {
 依赖:    Git Plugin + GitHub Token (私有仓库时)
 ```
 
-**踩过的坑**: Jenkins Git Plugin 内部用绝对路径调用 git.exe（如 `H:\Git\cmd\git.exe`），但这个路径**不会**被加到 Jenkins Agent 的系统 PATH。所以后续 Stage 里 `bat 'git --version'` 会报 `'git' is not recognized`。解决方案：Jenkins Global PATH 里加 git 目录，或者不在 Verify Stage 里调用 git（我们用了后者）。
+**踩过的坑**: Jenkins Git Plugin 内部用绝对路径调用 git.exe（如 `H:\Git\cmd\git.exe`），但这个路径**不会**被加到 Jenkins Agent 的系统 PATH。所以后续 Stage 里 `bat 'git --version'` 会报 `'git' is not recognized`。解决方案：Jenkins Global PATH 里加 git 目录，或者不在 Verify Stage 里调用 git（我用了后者）。
+
+---
+
+## parameters（参数化构建）
+
+在 Declarative Pipeline 里声明 `parameters {}` 块后，Jenkins Job 会多出一个 **Build with Parameters** 按钮。每次构建时用户可以在 Jenkins UI 上选择或输入参数值，Pipeline 里通过 `params.参数名` 取值。
+
+Jenkinsfile 中定义了 3 个参数：
+
+```groovy
+parameters {
+    choice(
+        name: 'TEST_SUITE',
+        choices: ['All', 'Smoke', 'Integration'],
+        description: '选择要执行的测试套件'
+    )
+    booleanParam(
+        name: 'FAIL_FAST',
+        defaultValue: false,
+        description: '第一个失败就停止?'
+    )
+    string(
+        name: 'SSH_HOST_OVERRIDE',
+        defaultValue: '',
+        description: '留空用默认 127.0.0.1, 填了就覆盖'
+    )
+}
+```
+
+### 三个参数的作用和消费方式
+
+| 参数 | 类型 | 可选值 | 默认值 | 在哪消费 | 效果 |
+|------|------|--------|---------|------|------|
+| `TEST_SUITE` | choice 下拉框 | `All`, `Smoke`, `Integration` | `All` | Stage 3 Run Tests | 决定 pytest 是否加 `-m smoke` / `-m integration` 标记过滤 |
+| `FAIL_FAST` | boolean | `true`, `false` | `false` | Stage 3 Run Tests | 决定 pytest `--maxfail=1`（第一个失败就停）还是 `--maxfail=9999`（全部跑完） |
+| `SSH_HOST_OVERRIDE` | string 文本框 | 任意IP地址 | `''`（空） | environment block | 非空时覆盖 `SSH_HOST`，空则回退到默认 `'127.0.0.1'` |
+
+### Jenkins UI 中的触发方式
+
+Job 首页左侧出现一个按钮：
+
+```
+🟡 Build with Parameters  ← 弹出参数填写页面，手动选值
+```
+
+**Build with Parameters 页面长这样**：
+
+```
+❓ TEST_SUITE       [All        ▼]   ← choice 下拉框，可选 All / Smoke / Integration
+❓ FAIL_FAST        [ ]              ← boolean 复选框，勾上 = true
+❓ SSH_HOST_OVERRIDE [______________] ← string 文本框，留空默认 127.0.0.1
+```
+
+### environment block 里消费 SSH_HOST_OVERRIDE
+
+```groovy
+environment {
+    SSH_HOST = "${params.SSH_HOST_OVERRIDE ?: '127.0.0.1'}"
+}
+```
+
+Groovy 语法 `A ?: B` 的意思是 **A 如果为空/null 则用 B**。所以：
+- 用户填了 `192.168.1.50` → `SSH_HOST = '192.168.1.50'`
+- 用户留空 → `SSH_HOST = '127.0.0.1'`
+
+### Run Tests Stage 里消费 TEST_SUITE 和 FAIL_FAST
+
+```groovy
+bat """
+    uv run pytest ^
+    ${params.TEST_SUITE == 'All' ? '' : '-m' + params.TEST_SUITE} ^
+    --maxfail=${params.FAIL_FAST ? 1 : 9999}
+"""
+```
+
+| 用户选择 | 实际生成的 pytest 命令 |
+|---------|----------------------|
+| TEST_SUITE = All, FAIL_FAST = false | `uv run pytest --maxfail=9999` |
+| TEST_SUITE = Smoke, FAIL_FAST = false | `uv run pytest -m Smoke --maxfail=9999` |
+| TEST_SUITE = Integration, FAIL_FAST = true | `uv run pytest -m Integration --maxfail=1` |
+
+> ⚠️ 注意：Windows cmd 里多行命令用 `^`（续行符），Linux 用 `\`。这里 Jenkins Agent 是 Windows 所以写 `^`。如果将来要兼容 Linux Agent，可以改成：
+> ```groovy
+> bat "uv run pytest ${params.TEST_SUITE == 'All' ? '' : '-m ' + params.TEST_SUITE} --maxfail=${params.FAIL_FAST ? 1 : 9999}"
+> ```
+
+### 为什么企业里用参数化构建
+
+| 场景 | 参数化的价值 |
+|------|-------------|
+| **不同跑者不同需求** | 早上 QA 跑 Smoke 看趋势，下午调试跑全量 + FAIL_FAST |
+| **多环境切换** | `SSH_HOST_OVERRIDE` 可以临时指向 Staging 环境而不用改代码 |
+| **减少 Jenkinsfile 数量** | 一个 Pipeline 覆盖多个场景，不用为每个场景写独立 Jenkinsfile |
+| **审批场景** | 生产部署 Pipeline 里加 `Deploy_To_Prod` booleanParam，只有勾上才真的部署 |
 
 ---
 
@@ -74,11 +169,13 @@ agent {
 stage('Verify Environment') {
     steps {
         bat '''
+            echo ============================================
             echo WORKSPACE: %WORKSPACE%
-            python --version
-            uv --version
-            allure --version
+            echo ============================================
         '''
+        bat 'python --version'
+        bat 'uv --version'
+        bat 'allure --version'
     }
 }
 ```
@@ -116,7 +213,7 @@ stage('Install Dependencies') {
 
 **为什么不用 `pip install -r requirements.txt`**:
 - `uv` 比 pip 快 50-100x（冷启动 venv 创建 1.5s vs 30s）
-- 没有 lock 文件就没有"今天能跑明天跑不了"的供应链问题
+- 有了 lock 文件才能避免"今天能跑明天跑不了"的供应链问题（锁死精确版本，保证可重现构建）
 - `uv sync` 会自动清理 venv 里**不再需要**的旧包（pip 不会）
 
 ---
@@ -208,11 +305,11 @@ stage('Publish HTML Report') {
 **依赖**: HTML Publisher Plugin（Manage Jenkins → Plugins 装）
 
 **参数说明**:
-| 参数 | 作用 |
-|------|------|
-| `allowMissing: true` | pytest 全挂了报告也可能生成，不让 Publish 这步也红 |
-| `alwaysLinkToLastBuild: true` | Job 页面左侧始终链接**最近一次**的报告 |
-| `keepAll: true` | 保留**每次**构建的报告历史 |
+| 参数                          | 作用                                               |
+| ----------------------------- | -------------------------------------------------- |
+| `allowMissing: true`          | pytest 全挂了报告也可能生成，不让 Publish 这步也红 |
+| `alwaysLinkToLastBuild: true` | Job 页面左侧始终链接**最近一次**的报告             |
+| `keepAll: true`               | 保留**每次**构建的报告历史                         |
 
 **与 archiveArtifacts 的区别**:
 - `archiveArtifacts`: **存文件**到 Jenkins 归档目录，能下载但页面上不会自动嵌入
@@ -235,19 +332,19 @@ stage('Generate Allure Report') {
 }
 ```
 
-### 踩坑记录（4 次尝试才跑通）
+### 踩坑记录（3 次尝试才跑通）
 
-| 尝试 | results 参数 | report 参数 | 报错 |
-|------|-------------|-------------|------|
-| 1 | `['allure-results']` (字符串数组) | `['allure-report']` | `results expects ResultsConfig but received String` |
-| 2 | `[[path: 'xxx']]` (对象数组) | `[[path: 'xxx']]` | `setReport() expects String but received ArrayList` |
-| 3 | `[[path: 'xxx']]` | `'xxx'` | ✅ 终于通了 |
+| 尝试 | results 参数                      | report 参数         | 报错                                                |
+| ---- | --------------------------------- | ------------------- | --------------------------------------------------- |
+| 1    | `['allure-results']` (字符串数组) | `['allure-report']` | `results expects ResultsConfig but received String` |
+| 2    | `[[path: 'xxx']]` (对象数组)      | `[[path: 'xxx']]`   | `setReport() expects String but received ArrayList` |
+| 3    | `[[path: 'xxx']]`                 | `'xxx'`             | ✅ 终于通了                                          |
 
 **根因**: 新版 Allure Plugin（`org.allurereport.jenkins`）对两个参数的类型**不对称**：
 - `results`: **对象数组**（支持同时汇总多个 allure-results 目录）
 - `report`: **单个字符串**（单个输出目录）
 
-还要注意：`allure` step **不需要** `version` 参数 —— Jenkins 自动从 `Manage Jenkins → Tools → Allure installations` 里找已配置的 CLI（我们配的是 `allure-2.46`）。
+还要注意：`allure` step **不需要** `version` 参数 —— Jenkins 自动从 `Manage Jenkins → Tools → Allure installations` 里找已配置的 CLI（我配的是 `allure-2.46`）。
 
 ---
 
@@ -272,29 +369,3 @@ post {
 - `allure-report` 是 Allure Plugin 每次重新生成的静态 HTML，体积大
 
 ---
-
-## SCM 模式改造要点
-
-之前是硬编码路径（`dir('i:\\nelson_private_projects\\...')`），切到 "Pipeline script from SCM" 后改成了 Jenkins workspace 相对路径：
-
-| 位置 | 改前 | 改后 |
-|------|------|------|
-| 所有 `dir()` | `dir('i:\\...')` | **删掉**（默认就在 WORKSPACE） |
-| publishHTML reportDir | `'i:\\...\\reports'` | `'reports'` |
-| archiveArtifacts | `'i:\\...\\reports\\**'` | `'reports/**,allure-results/**'` |
-| allure 块 | 包在 `dir()` 里 | **不包**（已在 WORKSPACE） |
-
-这样 Jenkinsfile **同时兼容本机和远程 Jenkins Agent** —— 企业里 Pipeline 必须写通用路径，不能绑定某台机器。
-
----
-
-## 扩展方向
-
-| 方向 | 怎么加 |
-|------|--------|
-| 定时触发 | Jenkins Job → Configure → Build Triggers → Build periodically → `H 9 * * *` |
-| PR 质量门禁 | GitHub Branch Protection → Require status checks → Jenkins GitHub Pull Request Builder |
-| 分支条件执行 | `when { branch 'main' }` / `when { branch 'feature/*' }` |
-| 参数化构建 | `parameters { choice(name: 'TEST_SUITE', choices: ['all', 'smoke', 'integration']) }` |
-| 矩阵构建 | `matrix { axes { axis name: 'OS', values: ['linux', 'windows'] } }` |
-| 通知告警 | `post { failure { dingtalk(...) / email(...) } }` |
