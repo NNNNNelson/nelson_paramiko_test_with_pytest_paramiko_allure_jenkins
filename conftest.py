@@ -1,6 +1,10 @@
+import json
 import logging
 import os
 from collections.abc import Iterator
+from pathlib import Path
+import platform
+import sys
 
 import paramiko
 import pytest
@@ -54,3 +58,48 @@ def clean_up_test_files():
         if entry.is_file():
             os.remove(entry.path)
             logger.info(f"🧹 已删除旧测试文件 {entry.path}")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_sessionfinish(session, exitstatus):
+    yield
+
+    alluredir = session.config.getoption("alluredir", default="allure-results")
+    allure_dir = Path(alluredir)
+    allure_dir.mkdir(parents=True, exist_ok=True)
+
+    env_content = [
+        f"Python.version={sys.version.split()[0]}",
+        f"OS={platform.system()}",
+        f"OS.Version={platform.release()}",
+        f"OS.Architecture={platform.machine()}",
+        f"SSH.Host={HOST}",
+        f"SSH.User={USER}",
+        f"Pytest.Version={pytest.__version__}",
+        f"Paramiko.Version={paramiko.__version__}",
+        f"Alluredir={allure_dir.resolve()}",
+    ]
+    env_path = allure_dir / "environment.properties"
+    env_path.write_text("\n".join(env_content) + "\n", encoding="utf-8")
+    logger.info(f"📝 Allure environment.properties 已写入 → {env_path}")
+
+    categories = [
+        {
+            "name": "Product Defects",
+            "matchedStatuses": ["broken"],
+        },
+        {
+            "name": "Test Defects",
+            "matchedStatuses": ["failed"],
+        },
+        {
+            "name": "Flaky Tests",
+            "matchedStatuses": ["broken", "failed"],
+            "flaky": True,
+        },
+    ]
+    cat_path = allure_dir / "categories.json"
+    cat_path.write_text(
+        json.dumps(categories, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    logger.info(f"📝 Allure categories.json 已写入 → {cat_path}")

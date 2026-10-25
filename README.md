@@ -30,7 +30,7 @@
 
 ```
 ├── 测试框架:     pytest (9.1+) + pytest-html + pytest-rerunfailures
-├── 报告生成:     allure-pytest (2.16+) + pytest-cov
+├── 报告生成:     allure-pytest (2.16+)
 ├── 包管理:       uv
 ├── CI/CD:        Jenkins 2.580+ (Declarative Pipeline)
 ├── 目标服务:     WSL SSH (OpenSSH Server) on Windows
