@@ -41,3 +41,12 @@ NONEXIST_PATH_WSL = "/tmp/this_path_should_never_exist_99999"
 DESTINATION_FOLDER_PATH_WINDOWS = str(
     BASE_DIR / "test_data_files/destination_data_files"
 )
+
+# ---- 性能测试目录常量 ----
+SOURCE_DATA_FILES_DIR_WINDOWS = str(BASE_DIR / "test_data_files/source_data_files")
+SOURCE_DATA_FILES_DIR_WSL = windows_path_to_wsl(SOURCE_DATA_FILES_DIR_WINDOWS)
+
+DESTINATION_DATA_FILES_DIR_WINDOWS = str(
+    BASE_DIR / "test_data_files/destination_data_files"
+)
+DESTINATION_DATA_FILES_DIR_WSL = windows_path_to_wsl(DESTINATION_DATA_FILES_DIR_WINDOWS)
