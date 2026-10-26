@@ -16,7 +16,7 @@ pipeline {
     parameters {
         choice(
             name: 'TEST_SUITE',
-            choices: ['All', 'Smoke', 'Integration', 'Perf'],
+            choices: ['all', 'smoke', 'integration', 'perf'],
             description: '选择要执行的测试套件'
         )
         booleanParam(
