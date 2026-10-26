@@ -8,7 +8,9 @@ pipeline {
     agent any
 
     options {
-        timeout(time: 3, unit: 'MINUTES')
+        // 注意: 性能测试跑 2000 个文件 + 每个文件 md5sum 校验, 串行耗时约 2-5 分钟,
+        // 所以 Pipeline 总超时设为 10 分钟（之前 3 分钟会导致 perf suite 被强杀）
+        timeout(time: 10, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timestamps()
     }
@@ -86,7 +88,7 @@ pipeline {
                 ]) {
                     bat """
                         uv run pytest ^
-                        ${params.TEST_SUITE == 'All' ? '' : '-m' + params.TEST_SUITE} ^
+                        ${params.TEST_SUITE == 'all' ? '' : '-m' + params.TEST_SUITE} ^
                         --maxfail=${params.FAIL_FAST ? 1 : 9999}
                     """
                 }

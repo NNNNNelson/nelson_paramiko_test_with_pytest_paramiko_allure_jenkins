@@ -21,8 +21,9 @@
 | 3   | **Allure 装饰器**        | 测试用例按 `feature / story` 分组，直接映射产品需求                 |
 | 4   | **pytest-rerunfailures** | 集成测试天生有网络抖动，自动重跑避免偶发失败                        |
 | 5   | **凭据安全管理**         | Jenkins Credentials + `withCredentials` 注入，密码绝不硬编码        |
-| 6   | **Markers 分类**         | `smoke` / `integration` 标记支持选择性执行                          |
+| 6   | **Markers 分类**         | `smoke` / `integration` / `perf` 标记支持选择性执行                 |
 | 7   | **uv 包管理**            | 比 pip 快 10-100 倍，企业项目标准实践                               |
+| 8   | **SFTP 性能基准测试**    | 2000 文件/90MB 串行上传/下载传输 + MD5 全量校验，规避 paramiko 线程安全风险  |
 
 ---
 
@@ -91,8 +92,9 @@ nelson-paramiko-tests/
 ├── tests/                       # 测试用例目录 (testpaths)
 │   ├── test_paramiko_run_command_success.py  # SSH 命令成功场景
 │   ├── test_paramiko_run_command_fail.py     # SSH 命令失败场景
-│   ├── test_paramiko_sftp_download.py        # SFTP 文件下载
-│   └── test_paramiko_sftp_upload.py          # SFTP 文件上传
+│   ├── test_paramiko_sftp_download.py        # SFTP 文件下载 (单文件)
+│   ├── test_paramiko_sftp_upload.py          # SFTP 文件上传 (单文件)
+│   └── test_performance_sftp_batch_transfer.py  # SFTP 性能基准 (2000 文件串行上传/下载)
 │
 ├── test_data_files/             # 测试用数据文件
 │   ├── source_data_files/       # 源文件 (上传 / 下载测试用)
@@ -196,16 +198,20 @@ uv run pytest -m smoke
 # 只跑集成测试
 uv run pytest -m integration
 
+# 只跑性能基准测试（会生成 2000 个临时文件，需要 WSL SSH 连接）
+uv run pytest -m perf
+
 # 只跑单个测试文件
 uv run pytest tests/test_paramiko_sftp_download.py -v
 ```
 
 ### pytest markers
 
-| Marker        | 说明                       | 测试数量 |
-| ------------- | -------------------------- | -------- |
-| `smoke`       | 冒烟测试 — 仅 SSH 命令     | 2/4      |
-| `integration` | 集成测试 — 覆盖 SSH + SFTP | 4/4      |
+| Marker        | 说明                       | 测试数量      |
+| ------------- | -------------------------- | ------------- |
+| `smoke`       | 冒烟测试 — 仅 SSH 命令     | 2 / 6         |
+| `integration` | 集成测试 — 覆盖 SSH + SFTP | 4 / 6         |
+| `perf`        | 性能测试 — 2000 文件批量传输 | 2 / 6         |
 
 Markers 定义在 `pyproject.toml → [tool.pytest.ini_options] → markers`。
 
@@ -263,6 +269,121 @@ Jenkinsfile 定义了 5 个 Stage + Declarative Checkout SCM。详细代码解�
 
 ---
 
+## ⚡ SFTP 性能基准测试
+
+性能测试文件: `tests/test_performance_sftp_batch_transfer.py`
+
+### 测试目标
+
+**功能正确性 + 性能指标双维度验收**：2000 个文件（90MB 总量）的串行 SFTP 上传和下载，每个文件都校验文件大小 + MD5 hash，同时统计完整的性能指标。
+
+### 文件规格（4 批次，总计 2000 个）
+
+| 批次 | 数量  | 单文件大小 | 累计体积 |
+| ---- | ----- | ---------- | -------- |
+| 1    | 1000  | 10 KB      | ~10 MB   |
+| 2    | 500   | 20 KB      | ~10 MB   |
+| 3    | 300   | 100 KB     | ~30 MB   |
+| 4    | 200   | 200 KB     | ~40 MB   |
+| **合计** | **2000** | — | **~90 MB** |
+
+### 验收标准
+
+| 指标          | 阈值   | 说明                                         |
+| ------------- | ------ | -------------------------------------------- |
+| 传输成功率    | 100%   | 任何一个文件校验失败即整体 FAIL              |
+| 上传总耗时    | < 300s | 5 分钟以内                                   |
+| 下载总耗时    | < 300s | 5 分钟以内                                   |
+| 性能统计维度  | 全量   | 总耗时 / 平均单文件 / P95 / 各批次独立耗时   |
+
+### 关键设计决策
+
+#### 1. 串行执行：规避 paramiko SFTPClient 线程安全风险
+
+```python
+# paramiko 官方文档明确标注: SFTPClient is NOT thread-safe
+# 多线程共享同一个 SSHClient / SFTPClient 会导致底层 channel 乱序、数据损坏甚至死锁
+
+for batch in upload_test_files:  # 外层: 批次循环
+    for local_path in batch["files"]:  # 内层: 单文件循环（串行 put/get）
+        sftp.put(str(local_path), remote_path)
+        # 校验文件大小 + MD5
+```
+
+**为什么不做并发？** paramiko 的 SFTP 通道底层是 SSH 的同一个 channel，多线程读写会导致 frame 边界错乱。Java / Go 的 SFTP 库通常有真正的连接池和多连接并发能力，但 paramiko 在 Python 生态里没有安全的多线程方案。串行虽然慢，但正确性 100%。预留了扩展点：如果要做并发，需要每个 worker 独立建立 SSHConnection + SFTPClient，不能共享。
+
+#### 2. 独立连接：不复用 conftest.py 的 session fixture
+
+```python
+# conftest.py 里的 ssh_client / sftp_client 是单例，给功能测试用的
+# 性能测试自己建独立连接（scope="session"），超时参数 30s（比 conftest 的 10s 宽松）
+
+
+@pytest.fixture(scope="session")
+def perf_ssh_connection() -> Iterator[paramiko.SSHClient]:
+    ssh = paramiko.SSHClient()
+    ssh.connect(_HOST, timeout=30, banner_timeout=30, auth_timeout=30)
+    yield ssh
+    ssh.close()
+```
+
+**为什么独立？** 第一，连接隔离——性能测试和功能测试互不影响；第二，Jenkins CI 环境网络延迟更高，需要更宽松的 timeout；第三，为未来并发扩展留好干净的边界。
+
+#### 3. Jenkins Pipeline 超时调整
+
+```groovy
+// Jenkinsfile 顶层 options
+options {
+    timeout(time: 10, unit: 'MINUTES')   // 之前 3 分钟会导致 perf suite 被强杀
+    ...
+}
+```
+
+性能测试 2000 个文件 + 每个文件一次远程 `md5sum` exec_command，串行耗时约 2-5 分钟。3 分钟 timeout 会在 Jenkins 上被强杀，调到 10 分钟留够余量。
+
+#### 4. 临时文件生命周期管理
+
+```python
+# 本地 source 文件: fixture 里生成 → yield 测试 → fixture 清理（delete unlink）
+# 本地 destination 文件: 下载测试后 fixture 清理（glob + unlink）
+# 远程 WSL 目录: /tmp/perf_test_{ts}_{rand} → yield → rm -rf
+```
+
+**为什么这样设计？** 失败也要清理——用 try/finally 模式，测试中途崩了也不会在 `test_data_files/` 里残留几千个文件污染数据目录。远程目录用随机名避免并发 session 冲突。
+
+### 性能统计方法
+
+```python
+# P95 计算（标准 Python 实现，无需额外依赖）
+def _compute_percentile(sorted_durations: List[float], p: float) -> float:
+    idx = int(len(sorted_durations) * p / 100)
+    return sorted_durations[idx]
+
+
+# 每个文件独立计时
+file_start = time.perf_counter()  # 纳秒精度，不受系统时钟调整影响
+sftp.put(local, remote)
+file_elapsed = time.perf_counter() - file_start
+
+# 输出 Markdown 表格到 Allure 附件
+stats = _format_stats_summary(batch_results, all_durations)
+allure.attach(stats, name="上传性能统计", attachment_type=_ALLURE_MD_ATTACHMENT_TYPE)
+```
+
+**用 `perf_counter()` 而不是 `time.time()`？** `time.time()` 受系统时钟调整影响（NTP 同步可能会跳），`perf_counter()` 是单调递增的高精度计时器，专门用来做耗时测量。
+
+### 运行方式
+
+```bash
+# 本地跑性能测试
+uv run pytest -m perf -v
+
+# Jenkins 参数化触发: TEST_SUITE = perf
+# 耗时 2-5 分钟，Jenkinsfile timeout 设为 10 分钟
+```
+
+---
+
 ## ⚠️ 常见问题 FAQ
 
 **Q: Jenkins 构建时报 `'git' is not recognized`？**
@@ -287,8 +408,13 @@ A: `uv` 由 Astral（ruff 团队）开发，Python 包管理全链路比 pip 快
 
 ## 🤝 关于这个项目
 
+### 这个项目的测试覆盖范围来源
+
 这个 Demo 是我回顾之前银行测试项目中的Python + Pytest + Paramiko + Allure + Jenkins 过程中的完整实践记录。
-这个项目中的动作只是一些基本操作的元动作, 实际测试过程中涉及更多的动作, 比如
+
+### 关于smoke(冒烟测试)/integration(集成测试)的覆盖范围
+
+这个项目中的smoke/integration测试主要涉及到一些基本操作的元动作, 用来做基本smoke/integration测试的演示, 实际工作中会基于这些元动作组合出更具体的测试过程. 另外, 实际工作中用到的测试过程涉及更多的针对真实场景的测试动作, 比如
 - 预检测服务器状态以及测试所需服务的状态
 - 预检测Database中测试条目所需配置是否已经是enable状态
 - 预检测测试环境所需目录及权限是否存在且可读写
@@ -296,6 +422,10 @@ A: `uv` 由 Astral（ruff 团队）开发，Python 包管理全链路比 pip 快
 - 轮询检测上游文件的处理情况, 超时自动判定为测试失败
 - 轮询检测下游文件的收取情况, 超时自动判定为测试失败
 - 返回测试结果接入Jenkins Pipeline Job, 并根据结果判断build成功/失败
+
+### 关于performance(性能基准测试)测试的覆盖范围
+
+性能测试部分尽量还原了过往真实工作中的测试场景, 并且加以改进, 增加了更多的性能基准方面的评测.
 
 **作者**: Nelson Wang  
 **灵感来源**: 汇丰软件开发（广东）QA 团队 日常实践

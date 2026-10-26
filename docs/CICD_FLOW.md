@@ -79,7 +79,7 @@ Jenkinsfile 中定义了 3 个参数：
 parameters {
     choice(
         name: 'TEST_SUITE',
-        choices: ['All', 'Smoke', 'Integration'],
+        choices: ['all', 'smoke', 'integration', 'perf'],
         description: '选择要执行的测试套件'
     )
     booleanParam(
@@ -99,7 +99,7 @@ parameters {
 
 | 参数 | 类型 | 可选值 | 默认值 | 在哪消费 | 效果 |
 |------|------|--------|---------|------|------|
-| `TEST_SUITE` | choice 下拉框 | `All`, `Smoke`, `Integration` | `All` | Stage 3 Run Tests | 决定 pytest 是否加 `-m smoke` / `-m integration` 标记过滤 |
+| `TEST_SUITE` | choice 下拉框 | `all`, `smoke`, `integration`, `perf` | `all` | Stage 3 Run Tests | 决定 pytest 是否加 `-m smoke` / `-m integration` / `-m perf` 标记过滤 |
 | `FAIL_FAST` | boolean | `true`, `false` | `false` | Stage 3 Run Tests | 决定 pytest `--maxfail=1`（第一个失败就停）还是 `--maxfail=9999`（全部跑完） |
 | `SSH_HOST_OVERRIDE` | string 文本框 | 任意IP地址 | `''`（空） | environment block | 非空时覆盖 `SSH_HOST`，空则回退到默认 `'127.0.0.1'` |
 
@@ -114,7 +114,7 @@ Job 首页左侧出现一个按钮：
 **Build with Parameters 页面长这样**：
 
 ```
-❓ TEST_SUITE       [All        ▼]   ← choice 下拉框，可选 All / Smoke / Integration
+❓ TEST_SUITE       [all         ▼]   ← choice 下拉框，可选 all / smoke / integration / perf
 ❓ FAIL_FAST        [ ]              ← boolean 复选框，勾上 = true
 ❓ SSH_HOST_OVERRIDE [______________] ← string 文本框，留空默认 127.0.0.1
 ```
@@ -136,20 +136,21 @@ Groovy 语法 `A ?: B` 的意思是 **A 如果为空/null 则用 B**。所以：
 ```groovy
 bat """
     uv run pytest ^
-    ${params.TEST_SUITE == 'All' ? '' : '-m' + params.TEST_SUITE} ^
+    ${params.TEST_SUITE == 'all' ? '' : '-m' + params.TEST_SUITE} ^
     --maxfail=${params.FAIL_FAST ? 1 : 9999}
 """
 ```
 
 | 用户选择 | 实际生成的 pytest 命令 |
 |---------|----------------------|
-| TEST_SUITE = All, FAIL_FAST = false | `uv run pytest --maxfail=9999` |
-| TEST_SUITE = Smoke, FAIL_FAST = false | `uv run pytest -m Smoke --maxfail=9999` |
-| TEST_SUITE = Integration, FAIL_FAST = true | `uv run pytest -m Integration --maxfail=1` |
+| TEST_SUITE = all, FAIL_FAST = false | `uv run pytest --maxfail=9999` |
+| TEST_SUITE = smoke, FAIL_FAST = false | `uv run pytest -m smoke --maxfail=9999` |
+| TEST_SUITE = integration, FAIL_FAST = true | `uv run pytest -m integration --maxfail=1` |
+| TEST_SUITE = perf, FAIL_FAST = false | `uv run pytest -m perf --maxfail=9999` ← 性能测试跑 2000 文件串行传输 |
 
 > ⚠️ 注意：Windows cmd 里多行命令用 `^`（续行符），Linux 用 `\`。这里 Jenkins Agent 是 Windows 所以写 `^`。如果将来要兼容 Linux Agent，可以改成：
 > ```groovy
-> bat "uv run pytest ${params.TEST_SUITE == 'All' ? '' : '-m ' + params.TEST_SUITE} --maxfail=${params.FAIL_FAST ? 1 : 9999}"
+> bat "uv run pytest ${params.TEST_SUITE == 'all' ? '' : '-m ' + params.TEST_SUITE} --maxfail=${params.FAIL_FAST ? 1 : 9999}"
 > ```
 
 ### 为什么企业里用参数化构建
@@ -160,6 +161,17 @@ bat """
 | **多环境切换** | `SSH_HOST_OVERRIDE` 可以临时指向 Staging 环境而不用改代码 |
 | **减少 Jenkinsfile 数量** | 一个 Pipeline 覆盖多个场景，不用为每个场景写独立 Jenkinsfile |
 | **审批场景** | 生产部署 Pipeline 里加 `Deploy_To_Prod` booleanParam，只有勾上才真的部署 |
+
+### 性能测试在 Jenkins 上的特殊注意事项
+
+Pipeline 跑 `TEST_SUITE = perf` 时，2000 个文件的串行 SFTP 传输 + 每个文件一次远程 `md5sum` exec_command，总耗时约 **2-5 分钟**。这带来 3 个和功能测试不同的点：
+
+| 注意事项 | 具体调整 | 原因 |
+|---------|---------|------|
+| **Pipeline 总超时从 3min 调到 10min** | Jenkinsfile `timeout(time: 10, unit: 'MINUTES')` | 3 分钟会把 perf suite 中途强杀，调到 10 分钟留够余量 |
+| **不需要独立 Stage** | 仍然走同一个 `Run Tests` Stage，用 `-m perf` 过滤 | 独立 Stage 本质上还是 `pytest -m perf`，拆分反而让 Pipeline 看起来更复杂 |
+| **Jenkins Console Output 会刷很多行** | 建议关掉 `--tb=long`（已有 `--tb=short`） | 2000 文件如果有个别失败，full traceback 会把 Console 刷爆 |
+| **Allure 报告里性能统计以 Markdown 附件呈现** | `allure.attach(stats, attachment_type=TEXT)` | 2000 文件的 P95 统计直接在 Allure 里渲染成表格，点击用例即可看完整性能摘要 |
 
 ---
 
