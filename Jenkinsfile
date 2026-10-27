@@ -85,13 +85,13 @@ pipeline {
                 bat '''
                     if exist allure-results (
                         if not exist allure-results/history mkdir allure-results/history
-                        forfiles /p allure-results /m *-result.json /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m *-attachment.txt /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m *-container.json /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m testrun.json /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m executor.json /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m environment.properties /c "cmd /c del @path" 2>nul
-                        forfiles /p allure-results /m categories.json /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m *-result.json /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m *-attachment.txt /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m *-container.json /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m testrun.json /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m executor.json /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m environment.properties /c "cmd /c del @path" 2>nul || ver>nul
+                        forfiles /p allure-results /m categories.json /c "cmd /c del @path" 2>nul || ver>nul
                     ) else (
                         mkdir allure-results/history
                     )
