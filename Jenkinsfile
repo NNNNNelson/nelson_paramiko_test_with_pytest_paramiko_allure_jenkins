@@ -84,7 +84,7 @@ pipeline {
                 // 这里只删临时文件 (*-result.json, *-attachment.txt 等), 留着 history/
                 bat '''
                     if exist allure-results (
-                        if not exist allure-results\history mkdir allure-results\history
+                        if not exist allure-results/history mkdir allure-results/history
                         forfiles /p allure-results /m *-result.json /c "cmd /c del @path" 2>nul
                         forfiles /p allure-results /m *-attachment.txt /c "cmd /c del @path" 2>nul
                         forfiles /p allure-results /m *-container.json /c "cmd /c del @path" 2>nul
@@ -93,7 +93,7 @@ pipeline {
                         forfiles /p allure-results /m environment.properties /c "cmd /c del @path" 2>nul
                         forfiles /p allure-results /m categories.json /c "cmd /c del @path" 2>nul
                     ) else (
-                        mkdir allure-results\history
+                        mkdir allure-results/history
                     )
                 '''
 
