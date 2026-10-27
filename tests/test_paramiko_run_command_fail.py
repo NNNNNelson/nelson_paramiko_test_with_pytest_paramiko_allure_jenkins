@@ -26,4 +26,4 @@ def test_run_command_fail(ssh_client: paramiko.SSHClient):
     logger.info(f"标准错误: {stderr.read().decode()}")
     assert ret_code != 0, f"路径 {test_nonexist_path} 不应该存在"
 
-    # assert 1 == 2, "这是一个故意设置为失败的assert, 用于测试失败重试"
+    assert 1 == 2, "这是一个故意设置为失败的assert, 用于测试失败重试"

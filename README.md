@@ -6,7 +6,7 @@
 ![Allure](https://img.shields.io/badge/Allure-Reporting-orange)
 ![uv](https://img.shields.io/badge/uv-Package%20Manager-purple)
 
-一个端到端的 Paramiko (SSH/SFTP) 集成测试工程实践 Demo。从本地 pytest 单测 → Jenkins Pipeline CI/CD → Allure 可视化报告，简单复现之前在汇丰测试团队的自动化测试工作流。
+一个端到端的 Paramiko (SSH/SFTP) 集成测试工程实践 Demo。从本地 pytest 单测 → Jenkins Pipeline CI/CD → Allure 可视化报告，复现之前在汇丰测试团队的自动化测试工作流。
 
 > 🏢 **背景**: 项目设计重现并优化汇丰软件开发内部 QA 团队的自动化测试和 CI/CD 流程，目标是构建一个可直接用于面试展示的、"企业级可迁移"的测试工程样例。
 
@@ -14,16 +14,16 @@
 
 ## ✨ 项目亮点
 
-| #   | 亮点                     | 对企业的价值                                                        |
-| --- | ------------------------ | ------------------------------------------------------------------- |
-| 1   | **完整 CI/CD Pipeline**  | Jenkins 从 GitHub 拉取代码 → 自动配置依赖 → 执行测试 → 生成双份报告 |
-| 2   | **双报告体系**           | pytest-html (快速预览) + Allure (结构化可视化仪表盘)                |
-| 3   | **Allure 装饰器**        | 测试用例按 `feature / story` 分组，直接映射产品需求                 |
-| 4   | **pytest-rerunfailures** | 集成测试天生有网络抖动，自动重跑避免偶发失败                        |
-| 5   | **凭据安全管理**         | Jenkins Credentials + `withCredentials` 注入，密码绝不硬编码        |
-| 6   | **Markers 分类**         | `smoke` / `integration` / `perf` 标记支持选择性执行                 |
-| 7   | **uv 包管理**            | 比 pip 快 10-100 倍，企业项目标准实践                               |
-| 8   | **SFTP 性能基准测试**    | 2000 文件/90MB 串行上传/下载传输 + MD5 全量校验，规避 paramiko 线程安全风险  |
+| #   | 亮点                     | 对企业的价值                                                                |
+| --- | ------------------------ | --------------------------------------------------------------------------- |
+| 1   | **完整 CI/CD Pipeline**  | Jenkins 从 GitHub 拉取代码 → 自动配置依赖 → 执行测试 → 生成双份报告         |
+| 2   | **双报告体系**           | pytest-html (快速预览) + Allure (结构化可视化仪表盘)                        |
+| 3   | **Allure 装饰器**        | 测试用例按 `feature / story` 分组，直接映射产品需求                         |
+| 4   | **pytest-rerunfailures** | 集成测试天生有网络抖动，自动重跑避免偶发失败                                |
+| 5   | **凭据安全管理**         | Jenkins Credentials + `withCredentials` 注入，密码绝不硬编码                |
+| 6   | **Markers 分类**         | `smoke` / `integration` / `perf` 标记支持选择性执行                         |
+| 7   | **uv 包管理**            | 比 pip 快 10-100 倍，企业项目标准实践                                       |
+| 8   | **SFTP 性能基准测试**    | 2000 文件/90MB 串行上传/下载传输 + MD5 全量校验，规避 paramiko 线程安全风险 |
 
 ---
 
@@ -33,11 +33,11 @@
 ├── 测试框架:     pytest (9.1+) + pytest-html + pytest-rerunfailures
 ├── 报告生成:     allure-pytest (2.16+)
 ├── 包管理:       uv
-├── CI/CD:        Jenkins 2.580+ (Declarative Pipeline)
+├── CI/CD:       Jenkins 2.580+ (Declarative Pipeline)
 ├── 目标服务:     WSL SSH (OpenSSH Server) on Windows
 ├── 远程客户端:   Paramiko 5.x
 ├── 配置管理:     python-dotenv
-├── 代码质量:     ruff + black
+├── 代码质量:     ruff
 └── 版本控制:     Git + GitHub
 ```
 
@@ -207,11 +207,11 @@ uv run pytest tests/test_paramiko_sftp_download.py -v
 
 ### pytest markers
 
-| Marker        | 说明                       | 测试数量      |
-| ------------- | -------------------------- | ------------- |
-| `smoke`       | 冒烟测试 — 仅 SSH 命令     | 2 / 6         |
-| `integration` | 集成测试 — 覆盖 SSH + SFTP | 4 / 6         |
-| `perf`        | 性能测试 — 2000 文件批量传输 | 2 / 6         |
+| Marker        | 说明                         | 测试数量 |
+| ------------- | ---------------------------- | -------- |
+| `smoke`       | 冒烟测试 — 仅 SSH 命令       | 2 / 6    |
+| `integration` | 集成测试 — 覆盖 SSH + SFTP   | 4 / 6    |
+| `perf`        | 性能测试 — 2000 文件批量传输 | 2 / 6    |
 
 Markers 定义在 `pyproject.toml → [tool.pytest.ini_options] → markers`。
 
@@ -279,22 +279,22 @@ Jenkinsfile 定义了 5 个 Stage + Declarative Checkout SCM。详细代码解�
 
 ### 文件规格（4 批次，总计 2000 个）
 
-| 批次 | 数量  | 单文件大小 | 累计体积 |
-| ---- | ----- | ---------- | -------- |
-| 1    | 1000  | 10 KB      | ~10 MB   |
-| 2    | 500   | 20 KB      | ~10 MB   |
-| 3    | 300   | 100 KB     | ~30 MB   |
-| 4    | 200   | 200 KB     | ~40 MB   |
-| **合计** | **2000** | — | **~90 MB** |
+| 批次     | 数量     | 单文件大小 | 累计体积   |
+| -------- | -------- | ---------- | ---------- |
+| 1        | 1000     | 10 KB      | ~10 MB     |
+| 2        | 500      | 20 KB      | ~10 MB     |
+| 3        | 300      | 100 KB     | ~30 MB     |
+| 4        | 200      | 200 KB     | ~40 MB     |
+| **合计** | **2000** | —          | **~90 MB** |
 
 ### 验收标准
 
-| 指标          | 阈值   | 说明                                         |
-| ------------- | ------ | -------------------------------------------- |
-| 传输成功率    | 100%   | 任何一个文件校验失败即整体 FAIL              |
-| 上传总耗时    | < 300s | 5 分钟以内                                   |
-| 下载总耗时    | < 300s | 5 分钟以内                                   |
-| 性能统计维度  | 全量   | 总耗时 / 平均单文件 / P95 / 各批次独立耗时   |
+| 指标         | 阈值   | 说明                                       |
+| ------------ | ------ | ------------------------------------------ |
+| 传输成功率   | 100%   | 任何一个文件校验失败即整体 FAIL            |
+| 上传总耗时   | < 300s | 5 分钟以内                                 |
+| 下载总耗时   | < 300s | 5 分钟以内                                 |
+| 性能统计维度 | 全量   | 总耗时 / 平均单文件 / P95 / 各批次独立耗时 |
 
 ### 关键设计决策
 

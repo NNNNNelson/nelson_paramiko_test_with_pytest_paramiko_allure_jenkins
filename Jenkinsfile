@@ -77,7 +77,25 @@ pipeline {
         stage('Run Tests') {
             steps {
                 bat 'if exist reports rmdir /s /q reports'
-                bat 'if exist allure-results rmdir /s /q allure-results'
+
+                // 清理 allure-results 时必须保留 history 目录!
+                // Allure Jenkins 插件会在构建开始时从上一次归档中恢复 history,
+                // 如果用 rmdir /s /q allure-results 全删了, 历史趋势就丢失了.
+                // 这里只删临时文件 (*-result.json, *-attachment.txt 等), 留着 history/
+                bat '''
+                    if exist allure-results (
+                        if not exist allure-results\history mkdir allure-results\history
+                        forfiles /p allure-results /m *-result.json /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m *-attachment.txt /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m *-container.json /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m testrun.json /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m executor.json /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m environment.properties /c "cmd /c del @path" 2>nul
+                        forfiles /p allure-results /m categories.json /c "cmd /c del @path" 2>nul
+                    ) else (
+                        mkdir allure-results\history
+                    )
+                '''
 
                 withCredentials([
                     usernamePassword(
@@ -94,46 +112,40 @@ pipeline {
                 }
             }
         }
-
-        // ------------------------------------------------------------
-        // Stage 4: 发布 pytest-html 报告
-        // 依赖插件: HTML Publisher
-        // reportDir 改为 WORKSPACE 相对路径
-        // ------------------------------------------------------------
-        stage('Publish HTML Report') {
-            steps {
-                publishHTML(target: [
-                    allowMissing: true,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'reports',
-                    reportFiles: 'report.html',
-                    reportName: 'Pytest HTML Report'
-                ])
-            }
-        }
-
-        // ------------------------------------------------------------
-        // Stage 5: 生成 Allure 报告
-        // 依赖插件: Allure (新版 org.allurereport.jenkins)
-        // 前置配置: Manage Jenkins → Tools → Allure installations → allure-2.46
-        // 语法要点:
-        //   results = 对象数组 (支持多个 allure-results 目录合并)
-        //   report  = 单个字符串 (输出目录)
-        // ------------------------------------------------------------
-        stage('Generate Allure Report') {
-            steps {
-                allure(
-                    results: [[path: 'allure-results']],
-                    report: 'allure-report'
-                )
-            }
-        }
     }
 
-    // 无论成功/失败都归档报告产物
+    // ============================================================
+    // post { always {} } 块: 无论测试成功/失败都执行
+    // 关键修复: 把 Allure 报告生成、HTML 报告发布都移到这里
+    // 原因: Declarative Pipeline 默认上一个 stage 失败后
+    //       后续 stage 全部跳过, 导致失败构建没有 Allure 报告,
+    //       Trend 图只记录了成功构建的数据
+    // ============================================================
     post {
         always {
+            // ---- 1. 发布 pytest-html 报告 ----
+            publishHTML(target: [
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'reports',
+                reportFiles: 'report.html',
+                reportName: 'Pytest HTML Report'
+            ])
+
+            // ---- 2. 生成 Allure 报告 ----
+            // 无论 pytest 成功还是失败, allure-results 里都有数据
+            // (成功 = 全绿, 失败 = 部分 result.json 含 failed/broken 状态)
+            // Allure 插件会自动从 archiveArtifacts 恢复 history,
+            // 合并当前数据后生成完整的 trend 图
+            allure(
+                results: [[path: 'allure-results']],
+                report: 'allure-report'
+            )
+
+            // ---- 3. 归档产物 ----
+            // archiveArtifacts 归档 allure-results/**, 包括 history/
+            // 这样下一次构建开始时, Allure 插件才能从中恢复历史数据
             archiveArtifacts artifacts: 'reports/**, allure-results/**',
                              allowEmptyArchive: true
         }
