@@ -134,55 +134,35 @@ def _nodeid_to_allure_fullname(nodeid: str) -> str:
 
 
 def _fill_skipped_for_unexecuted(allure_dir: Path, session):
-    """扫描 session.items，为每个没有 result.json 的已收集测试生成 skipped 记录。"""
+    """扫描 session.items，为每个没有 result.json 的已收集测试生成 skipped 记录。
 
-    # =====================================================================
-    # DEBUG V3: 直接 print 到 stdout, 绕过 logger 配置
-    # =====================================================================
-    print("\n" + "=" * 70, flush=True)
-    print("  DEBUG_V3 _fill_skipped_for_unexecuted START", flush=True)
-    print("=" * 70, flush=True)
-    print(f"  allure_dir = {allure_dir}", flush=True)
-    print(f"  allure_dir.resolve() = {allure_dir.resolve()}", flush=True)
-    print(f"  allure_dir.exists() = {allure_dir.exists()}", flush=True)
-    print(f"  len(session.items) = {len(session.items)}", flush=True)
-
-    # 列出 allure_dir 里的所有文件（包括子目录）
-    print(f"\n  📁 allure_dir 全部内容:", flush=True)
-    for p in sorted(allure_dir.rglob("*")) if allure_dir.exists() else []:
-        print(f"    {p.relative_to(allure_dir)}", flush=True)
+    背景: --maxfail=1 时 pytest 会停止后续测试, 但 allure-pytest 只给
+    已执行的测试生成 result.json. Allure History Trend 发现某个测试
+    没有本次 result.json 时, 会回退显示上一次构建的状态 → 假阳性.
+    本函数为未执行的测试补全 status=skipped 的 result.json, 让 Allure
+    正确知道 "这次这个测试被跳过了", 而不是继承历史状态.
+    """
 
     # 1. 收集 allure-results 里已有 result.json 的 fullName 集合
+    #    注意 Jenkins pipeline 必须在 pytest 前彻底清空 allure-results,
+    #    否则上一次构建残留的 result.json 会污染 executed_fullnames.
     executed_fullnames: set[str] = set()
-    print(f"\n  🔍 glob('*-result.json') 匹配到:", flush=True)
     for rf in allure_dir.glob("*-result.json"):
-        print(f"    📄 {rf.name}", flush=True)
         try:
             data = json.loads(rf.read_text(encoding="utf-8"))
             if "fullName" in data:
-                print(f"       → fullName={data['fullName']}, status={data.get('status','?')}", flush=True)
                 executed_fullnames.add(data["fullName"])
-            else:
-                print(f"       → ⚠️ 无 fullName 字段!", flush=True)
-        except (json.JSONDecodeError, OSError) as e:
-            print(f"       → ❌ 读取失败: {e}", flush=True)
-
-    print(f"\n  ✅ executed_fullnames ({len(executed_fullnames)} 个):", flush=True)
-    for fn in sorted(executed_fullnames):
-        print(f"    {fn}", flush=True)
+        except (json.JSONDecodeError, OSError):
+            continue
 
     # 2. 遍历所有被收集的测试项，找出没执行的
     skipped_count = 0
     now_ms = int(time.time() * 1000)
 
-    print(f"\n  🔁 遍历 session.items:", flush=True)
     for item in session.items:
         fullname = _nodeid_to_allure_fullname(item.nodeid)
-        is_in = fullname in executed_fullnames
-        print(f"    {'✅' if is_in else '❌'} nodeid={item.nodeid}", flush=True)
-        print(f"       → fullName={fullname}, 已执行={is_in}", flush=True)
 
-        if is_in:
+        if fullname in executed_fullnames:
             continue  # 已经有 result.json 了（passed/failed/skipped 都是）
 
         # 3. 组装 labels（复制 pytest markers，作为 Allure tag）
@@ -198,7 +178,8 @@ def _fill_skipped_for_unexecuted(allure_dir: Path, session):
         except Exception:
             title_path = []
 
-        # 5. historyId / testCaseId = md5(fullName)
+        # 5. historyId / testCaseId 必须和 allure-pytest 用同一算法
+        #    md5(fullName) —— 这样 Allure History Trend 才能正确关联历史
         hashed = hashlib.md5(fullname.encode("utf-8")).hexdigest()
 
         result = {
@@ -220,11 +201,7 @@ def _fill_skipped_for_unexecuted(allure_dir: Path, session):
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         skipped_count += 1
-        print(f"       ⏭️  已写入 skipped result.json → {out_file.name}", flush=True)
         logger.info(f"⏭️  未执行测试补全为 skipped → {fullname}")
-
-    print(f"\n  📊 总结: skipped_count={skipped_count}", flush=True)
-    print("=" * 70 + "\n", flush=True)
 
     if skipped_count > 0:
         logger.info(

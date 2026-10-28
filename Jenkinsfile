@@ -78,23 +78,14 @@ pipeline {
             steps {
                 bat 'if exist reports rmdir /s /q reports'
 
-                // 清理 allure-results 时必须保留 history 目录!
-                // Allure Jenkins 插件会在构建开始时从上一次归档中恢复 history,
-                // 如果用 rmdir /s /q allure-results 全删了, 历史趋势就丢失了.
-                // 这里只删临时文件 (*-result.json, *-attachment.txt 等), 留着 history/
+                // 彻底清空 allure-results, 只保留 history 目录
+                // 之前用 forfiles 逐条删, 在 --maxfail 场景下会残留上一次构建的
+                // result.json, 导致我们的 skipped 补全逻辑误判 "全部测试都已执行"
+                // Allure Jenkins 插件会自动把 history/ 归档和恢复, 不用担心丢失
                 bat '''
-                    if exist allure-results (
-                        if not exist allure-results/history mkdir allure-results/history
-                        forfiles /p allure-results /m *-result.json /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m *-attachment.txt /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m *-container.json /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m testrun.json /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m executor.json /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m environment.properties /c "cmd /c del @path" 2>nul || ver>nul
-                        forfiles /p allure-results /m categories.json /c "cmd /c del @path" 2>nul || ver>nul
-                    ) else (
-                        mkdir allure-results/history
-                    )
+                    if exist allure-results rmdir /s /q allure-results
+                    mkdir allure-results
+                    mkdir allure-results\history
                 '''
 
                 withCredentials([
