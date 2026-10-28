@@ -85,7 +85,7 @@ pipeline {
                 bat '''
                     if exist allure-results rmdir /s /q allure-results
                     mkdir allure-results
-                    mkdir allure-results\history
+                    mkdir allure-results/history
                 '''
 
                 withCredentials([
