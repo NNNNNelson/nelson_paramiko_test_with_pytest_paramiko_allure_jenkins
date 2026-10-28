@@ -84,8 +84,7 @@ pipeline {
                 // Allure Jenkins 插件会自动把 history/ 归档和恢复, 不用担心丢失
                 bat '''
                     if exist allure-results rmdir /s /q allure-results
-                    mkdir allure-results
-                    mkdir allure-results/history
+                    mkdir allure-results\\history
                 '''
 
                 withCredentials([
